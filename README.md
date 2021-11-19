@@ -50,7 +50,7 @@ begin
       Json.Add('key3').AsNumber  := 1.234;
       Json.Add('key4').AsString  := 'value 1';
       // add an array
-      Json.Add('array').ItemType := jitArray;
+      Json.Add('array', jitArray);
       for i := 1 to 3 do
         Json['array'].Add.AsInteger := i;
       // save a backup to file
@@ -106,7 +106,7 @@ bool Test99(AnsiString& Msg)
       Json->Add("key3")->AsNumber  = 1.234;
       Json->Add("key4")->AsString  = "value 1";
       // add an array
-      Json->Add("array")->ItemType = jitArray;
+      Json->Add("array", jitArray);
       for (int i = 1; i <= 3 ; i++)
         Json->Items["array"]->Add()->AsInteger = i;
       // save a backup to file
@@ -138,7 +138,7 @@ bool Test99(AnsiString& Msg)
 Please considere read Unit Tests in `test` folder for a complete list of `McJSON` use cases.
 
 ### Parse a JSON string
-Just use the AsJSON property
+Just use the `AsJSON` property
 ```pascal
 var
   N: TMcJsonItem;
@@ -161,8 +161,8 @@ Here is how to access all items (children) of a JSON object and change their val
 ```pascal
 N.AsJSON := '{"o": {"k1":"v1", "k2":"v2"}}';
 // type and value: from string to integer
-for i := 1 to N['o'].Count do  
-  N['o'].Values[i].AsInteger := i;   
+for i := 0 to N['o'].Count-1 do  
+  N['o'].Values[i].AsInteger := i+1;   
 ```
 Results in:
 ```json
@@ -172,6 +172,23 @@ Results in:
       "k2":2
    }
 }
+```
+
+### Shortener for array item access
+We can use the `Values[index]` and `Items['key']` properties to access items inside objects and arrays. 
+Since version `0.9.5`, we can use the `At(index, 'key')` as a shortener.
+```pascal
+N.AsJSON := '{"a": [{"k1":1,"k2":2},{"k1":10,"k2":20}]}';
+// how to access k2 of second object.
+i := N['a'].Values[1].Items['k2'].AsInteger; // i will be equal to 20
+i := N['a'].Values[1]['k2'].AsInteger;       // uses the Items[] as default property
+i := N['a'].At(1, 'k2').AsInteger;           // shortener
+```
+And there are other uses without the `key` parameter:
+```pascal
+N.AsJSON := '{"k1":1,"k2":2,"k3":3,"k4":4}';
+i := N.Values[2].AsInteger; // i will be equal to 3
+i := N.At(2).AsInteger;     // shortener
 ```
 
 ### Enumerate
@@ -236,6 +253,44 @@ Results in:
 }
 ```
 
+### Insert items
+Insert some items using keys and position.
+```pascal
+P.Insert('c', 0).AsInteger := 3;
+P.Insert('b', 0).AsInteger := 2;
+P.Insert('a', 0).AsInteger := 1;
+```
+Results in:
+```json
+{
+  "a": 1,
+  "b": 2,
+  "c": 3
+}
+```
+Also, it is possible to insert objects in arrays.
+```pascal
+Q.AsJSON := '{"x":0}';
+P.ItemType := jitArray;
+P.Insert(Q, 1);
+```
+Results in:
+```json
+[
+  1, 
+  {
+    "x": 0
+  }, 
+  2, 
+  3
+]
+```
+*Important*: since version 0.9.3, `Add()` and  `Insert()` will clone arguments of type `TMcJsonItem`. So, we have to free memory for `Q` too:
+```pascal
+P.Free;
+Q.Free;
+```
+
 ### Inspect the content of an object
 Let's see how to inspect all the inner data structure, types and values of a `TMcJsonItem` object.
 ```c++
@@ -289,7 +344,7 @@ And using a example like `testInspect.json`:
    ],
    "Msg": [
       "#1 UTF8 example: motivação",
-      "#2 Scapes: \b\t\n\f\r\\u\"\\"
+      "#2 Scapes: \b\t\n\f\r\\uFFFF\"\\"
    ]
 }
 ```
@@ -317,9 +372,9 @@ object; string; Key=; Value=; JSON={"foo":"bar","array":[100,20],"arrayObj":[{"k
        value; number; Key=key1; Value=1.0; JSON="key1":1.0
      object; string; Key=; Value=; JSON={"key2":2.0}
        value; number; Key=key2; Value=2.0; JSON="key2":2.0
-   array; string; Key=Msg; Value=; JSON="Msg":["#1 UTF8 example: motivação","#2 Scapes: \b\t\n\f\r\u\"\\"]
+   array; string; Key=Msg; Value=; JSON="Msg":["#1 UTF8 example: motivação","#2 Scapes: \b\t\n\f\r\uFFFF\"\\"]
      value; string; Key=; Value=#1 UTF8 example: motivação; JSON="#1 UTF8 example: motivação"
-     value; string; Key=; Value=#2 Scapes: \b\t\n\f\r\u\"\\; JSON="#2 Scapes: \b\t\n\f\r\u\"\\"
+     value; string; Key=; Value=#2 Scapes: \b\t\n\f\r\uFFFF\"\\; JSON="#2 Scapes: \b\t\n\f\r\uFFFF\"\\"
 ```
 
 ### A note about empty keys
@@ -345,11 +400,13 @@ Will raise exception:
 Error while parsing text: "line break" at pos "14"
 ```
 
+### Load from and Save to Files
+`McJSON` can load from ASCII and UTF-8 files (without BOM). See `LoadFromFile` method.
+The `SaveToFile` method will write using UTF-8 encoding.
+
 ## Known issues
 The world is not perfect and neither am I.
 Here are some known issues:
-* `McJSON` does not parse (escape) `\u` (+4 hexa chars) (e.g. `\uFFFF`) yet.
-* Exceptions with `at pos "x"` might not reflect the original position in JSON string due to `trimWS()`.
 * Trying to follow and confirm the [specification](https://www.json.org/json-en.html) using [JSONLint](https://jsonlint.com/).
 
 ## Performance tests

@@ -39,7 +39,7 @@ begin
   Msg := 'Test 01: parse simple object';
   N := TMcJsonItem.Create;
   try
-    N.AsJSON := '{ "key": "value" }';
+    N.AsJSON := ' { "key" : "value" } ';
     Result   :=   (N.ItemType               = jitObject)
               and (N.Count                  = 1        )
               and (N.Key                    = ''       )
@@ -132,7 +132,7 @@ function Test05(out Msg: string): Boolean;
 var
   N, M, P, Q: TMcJsonItem;
 begin
-  Msg := 'Test 05: Add, Remove functions';
+  Msg := 'Test 05: Add, Insert, Delete functions';
   N := TMcJsonItem.Create;
   M := TMcJsonItem.Create;
   P := TMcJsonItem.Create;
@@ -154,31 +154,48 @@ begin
     N.Add('k1').Add('k2').Add('k3').AsString := 'v3';
     Result := Result and (N.AsJSON = '{"k1":{"k2":{"k3":"v3"}}}');
     // add int values into array
-    P.Add('a').ItemType := jitArray;
+    P.Add('a', jitArray);
     P['a'].Add.AsInteger := 1;
     P['a'].Add.AsInteger := 2;
     P['a'].Add.AsInteger := 3;
     Result := Result and (P.AsJSON = '{"a":[1,2,3]}');
+    // add item
+    Q.AsJSON := '{"x":0}';
+    P['a'].Add(Q);
+    Result := Result and (P.AsJSON = '{"a":[1,2,3,{"x":0}]}');
     // add obj values into array
     P.Clear;
-    P.Add('a' ).ItemType  := jitArray;
+    Q.Clear;
+    P.Add('a', jitArray);
     Q.Add('k1').AsInteger := 1;
     P['a'].Add.AsObject := Q;
     P['a'].Add.AsObject := Q;
     Result := Result and (P.AsJSON = '{"a":[{"k1":1},{"k1":1}]}')
                      and (P['a'].Count = 2);
-    // remove item by index
+    // delete item by index
     P['a'].Delete(1);
     Result := Result and (P.AsJSON = '{"a":[{"k1":1}]}')
                      and (P['a'].Count = 1);
     // remove item by key
-    P.Delete('a');
+    P.delete('a');
     Result := Result and (P.AsJSON = '{}')
                      and (P.Count  = 0   );
     // remove empty item
-    P.Delete(0);
+    P.delete(0);
     Result := Result and (P.AsJSON = '{}')
                      and (P.Count  = 0   );
+    // insert item by key
+    P.Insert('c', 0).AsInteger := 3;
+    P.Insert('b', 0).AsInteger := 2;
+    P.Insert('a', 0).AsInteger := 1;
+    Result := Result and (P.AsJSON = '{"a":1,"b":2,"c":3}')
+                     and (P.Count  = 3 );
+    // insert item
+    Q.AsJSON := '{"x":0}';
+    P.ItemType := jitArray;
+    P.Insert(Q, 1);
+    Result := Result and (P.AsJSON = '[1,{"x":0},2,3]')
+                     and (P.Count  = 4 );
   except
     on E: Exception do
     begin
@@ -187,8 +204,9 @@ begin
     end;
   end;
   N.Free;
-  //M.Free // no! free inside N
+  M.Free; // yes! Add cloned M inside N
   P.Free;
+  Q.Free; // yes! Add/Insert cloned Q inside P.
 end;
 
 function Test06(out Msg: string): Boolean;
@@ -280,8 +298,8 @@ begin
   Msg := 'Test 09: escapes';
   N := TMcJsonItem.Create;
   try
-    N.AsJSON := '{ "k": "\b\t\n\f\r\u \" \\ \/"}';
-    Result   := (N['k'].AsString = '\b\t\n\f\r\u \" \\ \/');
+    N.AsJSON := '{ "k": "\b\t\n\f\r\u05d1 \" \\ \/"}';
+    Result   := (N['k'].AsString = '\b\t\n\f\r\u05d1 \" \\ \/');
   except
     on E: Exception do
     begin
@@ -343,6 +361,9 @@ begin
     StrL.Add('bad value: json'           +'='+ '{"k":"{"key":"value"}"}');
     // unknown escape
     StrL.Add('bad value: unknown escape' +'='+ '{"k":"aa \x aa"}');
+    StrL.Add('bad value: bad u escape 1' +'='+ '{"k":"\u"}'      );
+    StrL.Add('bad value: bad u escape 2' +'='+ '{"k":"\u000"}'   );
+    StrL.Add('bad value: bad u escape 3' +'='+ '{"k":"\u0FaX"}'  );
     // check
     for i:=0 to StrL.Count-1 do
     begin
@@ -384,11 +405,14 @@ begin
     StrL.Add('key: empty'          +'='+ '{"":"value"}'               );
     StrL.Add('key: keyword'        +'='+ '{"{":"value"}'              );
     // values
+    StrL.Add('value: alone'        +'='+ '"k"'                        );
     StrL.Add('value: leading zero' +'='+ '{"k": 0.1234}'              );
     // objects
     StrL.Add('object: empty'       +'='+ '{}'                         );
+    StrL.Add('object: empty w key' +'='+ '{"o": { }}'                 );
     // arrays
     StrL.Add('array: empty no key' +'='+ '[]'                         );
+    StrL.Add('array: empty w key'  +'='+ '{"a": [ ]}'                 );
     StrL.Add('array: empty'        +'='+ '{"k":[]}'                   );
     StrL.Add('array: no root'      +'='+ '[1,2]'                      );
     StrL.Add('array: bi openned'   +'='+ '{"k":[["1","2"]]}'          );
@@ -485,18 +509,21 @@ begin
     // now add a array of objects
     N.Add('array').ItemType := jitArray;
     for i := 1 to 2 do
-      N['array'].Add.AsJSON := '{"k'+IntToStr(i)+'": "v'+IntToStr(i)+'"}';
-    // save to file (not Human readable)
-    N.SaveToFile('test12.json', false);
+      N['array'].Add.AsJSON := '{"k'+IntToStr(i)+'": "ח'+IntToStr(i)+'"}';
+    // save to file (not Human readable and UTF-8)
+    N.SaveToFile('test13.json', false);
     // change N using IndexOf
     idx := N.IndexOf('array');
     if (idx >= 0) then
       N.Delete(idx);
-    // load from file
-    M.LoadFromFile('test12.json');
+    // load from file (UTF-8 by default)
+    M.LoadFromFile('test13.json');
     // check before and after delete
     Result := Result and (N.AsJSON = '{"i":123}'                                  )
-                     and (M.AsJSON = '{"i":123,"array":[{"k1":"v1"},{"k2":"v2"}]}');
+                     and (M.AsJSON = '{"i":123,"array":[{"k1":"ח1"},{"k2":"ח2"}]}');
+    // load a UTF-8 file
+    M.LoadFromFile('test13-UTF8.json');
+    Result := Result and (M['utf8'].AsString = 'דחüצ');
   except
     on E: Exception do
     begin
@@ -667,6 +694,65 @@ begin
   N.Free;
 end;
 
+function Test18(out Msg: string): Boolean;
+var
+  Obj, ChildObj: TMcJsonItem;
+begin
+  Msg := 'Test 18: example like JsonDataObjects';
+  Obj := TMcJsonItem.Create;
+  try
+    // access (no automatic creation as in JDO)
+    Obj.Add('foo').AsString := 'bar';
+    Obj.Add('bar').AsString := 'foo';
+    // array creation, Obj is the owner of 'array'
+    Obj.Add('array', jitArray);
+    Obj['array'].Add.AsInteger := 10;
+    Obj['array'].Add.AsInteger := 20;
+    // object creation, 'array' is the owner of ChildObj
+    ChildObj := Obj['array'].Add(jitObject);
+    ChildObj.Add('value').AsNumber := 12.3;
+    // array creation, ChildObj is the owner of 'subarray'
+    ChildObj.Add('subarray', jitArray);
+    ChildObj['subarray'].Add.AsInteger := 100;
+    ChildObj['subarray'].Add.AsInteger := 200;
+    Result := (Obj.AsJSON = '{"foo":"bar","bar":"foo","array":[10,20,{"value":12.3,"subarray":[100,200]}]}');
+  except
+    on E: Exception do
+    begin
+      Msg := Msg + #13#10 + sIndent + 'Error: ' + E.Message;
+      Result := False;
+    end;
+  end;
+  Obj.Free;
+end;
+
+function Test19(out Msg: string): Boolean;
+var
+  N: TMcJsonItem;
+begin
+  Msg := 'Test 19: At() shortener for array item access';
+  N := TMcJsonItem.Create;
+  Result := True;
+  try
+    N.AsJSON := '{"a": [{"k1":1,"k2":2},{"k1":10,"k2":20}]}';
+    // how to access k2 in pos 1.
+    Result := Result and (N['a'].Values[1].Items['k2'].AsInteger = 20);
+    Result := Result and (N['a'].Values[1]['k2'].AsInteger       = 20);
+    Result := Result and (N['a'].At(1, 'k2').AsInteger           = 20);
+    // other uses
+    N.AsJSON := '{"k1":1,"k2":2,"k3":3,"k4":4}';
+    Result := Result and (N.Values[2].AsInteger = 3);
+    Result := Result and (N.At(2).AsInteger     = 3);
+  except
+    on E: Exception do
+    begin
+      Msg := Msg + #13#10 + sIndent + 'Error: ' + E.Message;
+      Result := False;
+    end;
+  end;
+  N.Free;
+end;
+
 function Test99(out Msg: string): Boolean;
 var
   Json: TMcJsonItem;
@@ -682,7 +768,7 @@ begin
       Json.Add('key3').AsNumber  := 1.234;
       Json.Add('key4').AsString  := 'value 1';
       // add an array
-      Json.Add('array').ItemType := jitArray;
+      Json.Add('array', jitArray);
       for i := 1 to 3 do
         Json['array'].Add.AsInteger := i;
       // save a backup to file
@@ -734,6 +820,8 @@ begin
   Check(Test15, TotalPassed, TotalFailed);
   Check(Test16, TotalPassed, TotalFailed);
   Check(Test17, TotalPassed, TotalFailed);
+  Check(Test18, TotalPassed, TotalFailed);
+  Check(Test19, TotalPassed, TotalFailed);
 
   Check(Test99, TotalPassed, TotalFailed);
 
