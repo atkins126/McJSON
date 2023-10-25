@@ -1,12 +1,14 @@
 program PrjTestMcJSON;
 
-{.$mode objfpc}
 {$mode delphi}
+
+// string is AnsiString with UTF-8 Enconding
 {$H+}
 
 uses
   Classes,
   SysUtils,
+  LConvEncoding,
   McJSON;
 
 
@@ -14,7 +16,7 @@ type
   TTest = function(out Msg: string): Boolean;
 
 var
-  s, sIndent: string;
+  sIndent: string;
 
 procedure Check(Test: TTest; var Passed, Failed: Integer);
 var
@@ -44,10 +46,14 @@ begin
               and (N.Count                  = 1        )
               and (N.Key                    = ''       )
               and (N['key'].Key             = 'key'    )
+              and (N.HasKey('key')          = True     )
+              and (N.HasKey('not')          = False    )
+              and (N.HasChild               = True     )
+              and (N['key'].HasChild        = False    )
               and (N['key'].AsString        = 'value'  )
               and (N.Keys[0]                = 'key'    )
-              and (N.Values[0].AsString     = 'value'  )
-              and (N.Items['key'].AsString  = 'value'  );
+              and (N.Items[0].AsString      = 'value'  )
+              and (N.Values['key'].AsString = 'value'  );
   except
     on E: Exception do
     begin
@@ -66,13 +72,14 @@ begin
   N := TMcJsonItem.Create;
   try
     N.AsJSON := '{ "array": [1, 2.0, "3"] }';
-    Result   :=   (N.ItemType                     = jitObject)
-              and (N.Count                        = 1        )
+    Result   :=   (N.Count                        = 1        )
+              and (N.ItemType                     = jitObject)
               and (N['array'].ItemType            = jitArray )
+              and (N['array'].Items[0].ItemType   = jitValue )
               and (N['array'].Count               = 3        )
               and (N['array'].Key                 = 'array'  )
-              and (N['array'].Values[1].AsString  = '2.0'    )
-              and (N['array'].Values[2].AsInteger = 3        );
+              and (N['array'].Items[1].AsString   = '2.0'    )
+              and (N['array'].Items[2].AsInteger  = 3        );
   except
     on E: Exception do
     begin
@@ -95,9 +102,11 @@ begin
               and (N.Count                              = 1        )
               and (N['sub'].ItemType                    = jitArray )
               and (N['sub'].Count                       = 2        )
+              and (N.HasKey('sub')                      = True     )
+              and (N.HasKey('not')                      = False    )
               and (N['sub'].Key                         = 'sub'    )
-              and (N['sub'].Values[1]['key2'].Key       = 'key2'   )
-              and (N['sub'].Values[1]['key2'].AsInteger = 2        );
+              and (N['sub'].Items[1]['key2'].Key        = 'key2'   )
+              and (N['sub'].Items[1]['key2'].AsInteger  = 2        );
   except
     on E: Exception do
     begin
@@ -147,8 +156,28 @@ begin
               and (N['sub'].ItemType                    = jitArray )
               and (N['sub'].Count                       = 3        )
               and (N['sub'].Key                         = 'sub'    )
-              and (N['sub'].Values[2]['key3'].Key       = 'key3'   )
-              and (N['sub'].Values[2]['key3'].AsInteger = 3        );
+              and (N['sub'].Items[2]['key3'].Key        = 'key3'   )
+              and (N['sub'].Items[2]['key3'].AsInteger  = 3        );
+    // add item with empty value.
+    N.Clear;
+    N.Add('k');
+    Result := Result and (N.AsJSON = '{"k":""}');
+    // add item with empty key.
+    N.Clear;
+    N.Add('').AsString := 'v';
+    Result := Result and (N.AsJSON = '{"":"v"}');
+    // add empty array
+    N.Clear;
+    N.Add('a').ItemType := jitArray;
+    Result := Result and (N.AsJSON = '{"a":[]}');
+    // add objects into array
+    N['a'].Add('k1').AsString := 'v1';
+    N['a'].Add('k2').AsString := 'v2';
+    Result := Result and (N.AsJSON = '{"a":[{"k1":"v1"},{"k2":"v2"}]}');
+    // add empty object
+    N.Clear;
+    N.Add('o').ItemType := jitObject;
+    Result := Result and (N.AsJSON = '{"o":{}}');
     // add nested object
     N.Clear;
     N.Add('k1').Add('k2').Add('k3').AsString := 'v3';
@@ -217,9 +246,9 @@ begin
   N := TMcJsonItem.Create;
   try
     N.AsJSON := '{ "array": [1, "2", 3] }';
-    //N['not'].Values[3].AsInteger := 4;
-    N['array'].Values[3].AsInteger := 4;
-    //N['array'].Items[0].SetInt(4);        // will not compile in Delphi
+    //N['not'].Items[3].AsInteger := 4;
+    N['array'].Items[3].AsInteger := 4;
+    //N['array'].Values[0].SetInt(4);        // will not compile in Delphi
     Result := False;
   except
     on E: Exception do
@@ -240,7 +269,6 @@ begin
   N := TMcJsonItem.Create;
   try
     N.AsJSON := '{ "i": 123, "f": 123.456, "s": "abc", "b": True, "n": Null }';
-    s := N.ToString(true);
     // changes
     N['i'].AsInteger := 321;
     N['f'].AsNumber  := 456.123;
@@ -248,19 +276,21 @@ begin
     N['b'].AsBoolean := False;
     // get reference as object.
     M := N.AsObject;
-    // aux text
+    // aux test
     Aux := abs(N['f'].AsNumber - 456.123) < 0.001;
     // check result
-    Result :=     (N['i'].AsInteger = 321  )
-              and (Aux                     )
-              and (N['s'].AsString  = 'cba')
-              and (N['b'].AsBoolean = False)
-              and (N['n'].IsNull           )
-              and (M.Count          = 5    )
-              and (M['i'].AsInteger = 321  )
-              and (M['s'].AsString  = 'cba')
-              and (M['b'].AsBoolean = False)
-              and (M['n'].IsNull           );
+    Result :=     (N['i'].AsInteger = 321        )
+              and (N['i'].AsJSON    = '"i":321'  )
+              and (Aux                           )
+              and (N['s'].AsString  = 'cba'      )
+              and (N['b'].AsBoolean = False      )
+              and (N['n'].IsNull                 )
+              and (M.Count          = 5          )
+              and (M['i'].AsInteger = 321        )
+              and (M['s'].AsJSON    = '"s":"cba"')
+              and (M['s'].AsString  = 'cba'      )
+              and (M['b'].AsBoolean = False      )
+              and (M['n'].IsNull                 );
   except
     on E: Exception do
     begin
@@ -294,12 +324,36 @@ end;
 function Test09(out Msg: string): Boolean;
 var
   N: TMcJsonItem;
+  S, SAnsi, SRef: string;
 begin
   Msg := 'Test 09: escapes';
   N := TMcJsonItem.Create;
+  Result := True;
   try
+    // check parse escapes
     N.AsJSON := '{ "k": "\b\t\n\f\r\u05d1 \" \\ \/"}';
-    Result   := (N['k'].AsString = '\b\t\n\f\r\u05d1 \" \\ \/');
+    Result := Result and (N['k'].AsString = '\b\t\n\f\r\u05d1 \" \\ \/');
+    // escape string function
+    SAnsi := UTF8ToCP1252('\a"b"ç');
+    SAnsi := McJsonEscapeString(SAnsi);
+    Result := Result and (SAnsi = '\\a\"b\"\u00E7');
+    // unescape function
+    SAnsi := McJsonUnEscapeString('aB\t\n\u00e7d\u00e7'); // debug sees '?' and no 'ç'
+    SRef  := UTF8ToCP1252('aB' + #9 + #10 + 'çdç');       // because it isn't UTF-8
+    Result := Result and ( SAnsi = SRef );
+    // escape and unescape sequence
+    S := McJsonEscapeString('a/b\c"' + #8 + #9 + #10 + #12 + #13);
+    Result := Result and (S = 'a\/b\\c\"\b\t\n\f\r');
+    S := McJsonUnEscapeString(S);
+    Result := Result and (S = ('a/b\c"' + #8 + #9 + #10 + #12 + #13) );
+    // bad escape (will be ignored)
+    S := McJsonUnEscapeString('a\"\');
+    Result := Result and (S = 'a"');
+    // escape levels
+    S := McJsonEscapeString('normal: \"/', jetNormal);
+    Result := Result and (S = 'normal: \\\"/');
+    S := McJsonEscapeString('strict: \"/', jetStrict);
+    Result := Result and (S = 'strict: \\\"\/');
   except
     on E: Exception do
     begin
@@ -331,20 +385,24 @@ begin
     StrL.Add('bad value: not number 3'   +'='+ '{"k":1234E}'          );
     StrL.Add('bad value: not number 4'   +'='+ '{"k":1234E+-1}'       );
     StrL.Add('bad value: not number 5'   +'='+ '{"k":1234E+a}'        );
+    StrL.Add('bad value: not number 6'   +'='+ '{"k":1,234}'          );
     StrL.Add('bad value: leading 0s 1'   +'='+ '{"k":01234}'          );
     StrL.Add('bad value: leading 0s 2'   +'='+ '{"k":00004}'          );
     StrL.Add('bad value: invalid'        +'='+ '{"k":"v"a}'           );
     StrL.Add('bad value: line break'     +'='+ '{"k":"v'+#13+'"}'     );
     // values not recognized
-    StrL.Add('bad value: not keyword'    +'='+ '{"k":truee}'          );
-    StrL.Add('bad value: not keyword'    +'='+ '{"k":falsi}'          );
-    StrL.Add('bad value: not keyword'    +'='+ '{"k":nil  }'          );
+    StrL.Add('bad value: not keyword 1'  +'='+ '{"k":truee}'          );
+    StrL.Add('bad value: not keyword 2'  +'='+ '{"k":falsi}'          );
+    StrL.Add('bad value: not keyword 3'  +'='+ '{"k":nil  }'          );
+    StrL.Add('bad value: not keyword 4'  +'='+ '{"k":nul  }'          );
+    StrL.Add('bad value: not keyword 5'  +'='+ '{"k":tru  }'          );
     // key bad formats
     StrL.Add('bad key: no key'           +'='+ '{"value"}'            );
     StrL.Add('bad key: not closed 1'     +'='+ '{"k:"value"}'         );
     StrL.Add('bad key: not closed 2'     +'='+ '{"key:"value"}'       );
     StrL.Add('bad key: not opened'       +'='+ '{k":"value"}'         );
-    StrL.Add('bad key: duplicated'       +'='+ '{"k":1,"a":2,"a":3}'  );
+    StrL.Add('bad key: duplicated 1'     +'='+ '{"k":1,"a":2,"a":3}'  );
+    StrL.Add('bad key: duplicated 2'     +'='+ '{"o":{"a":1,"a":2}}'  );
     // object bad formats
     StrL.Add('bad object: not closed 1'  +'='+ '{'                    );
     StrL.Add('bad object: not closed 2'  +'='+ '{"k":"value"'         );
@@ -358,17 +416,18 @@ begin
     StrL.Add('bad array: wrong item'     +'='+ '{"k":["key":"value"]}');
     StrL.Add('bad array: wrong close'    +'='+ '{"k":["1","2"}}'      );
     // json inside a json
-    StrL.Add('bad value: json'           +'='+ '{"k":"{"key":"value"}"}');
+    StrL.Add('bad value: unescaped json' +'='+ '{"k":"{"key":"value"}"}');
     // unknown escape
-    StrL.Add('bad value: unknown escape' +'='+ '{"k":"aa \x aa"}');
-    StrL.Add('bad value: bad u escape 1' +'='+ '{"k":"\u"}'      );
-    StrL.Add('bad value: bad u escape 2' +'='+ '{"k":"\u000"}'   );
-    StrL.Add('bad value: bad u escape 3' +'='+ '{"k":"\u0FaX"}'  );
+    StrL.Add('bad value: unknown escape' +'='+ '{"k":"aa \x aa"}'     );
+    StrL.Add('bad value: invalid escape' +'='+ '{"k":"ab\"}'          );
+    StrL.Add('bad value: bad u escape 1' +'='+ '{"k":"\u"}'           );
+    StrL.Add('bad value: bad u escape 2' +'='+ '{"k":"\u000"}'        );
+    StrL.Add('bad value: bad u escape 3' +'='+ '{"k":"\u0FaX"}'       );
     // check
     for i:=0 to StrL.Count-1 do
     begin
-      sName   := Trim( StrL.Names[i]      );
-      sTest   := Trim( StrL.Values[sName] );
+      sName := Trim( StrL.Names[i]      );
+      sTest := Trim( StrL.Values[sName] );
       if ( N.Check(sTest) ) then
       begin
         Msg := Msg + #13#10 + sIndent + 'Expected to fail but pass: ' + sName;
@@ -402,27 +461,28 @@ begin
   anyFail := False;
   try
     // keys
-    StrL.Add('key: empty'          +'='+ '{"":"value"}'               );
-    StrL.Add('key: keyword'        +'='+ '{"{":"value"}'              );
+    StrL.Add('key: empty'            +'='+ '{"":"value"}'               );
+    StrL.Add('key: keyword'          +'='+ '{"{":"value"}'              );
     // values
-    StrL.Add('value: alone'        +'='+ '"k"'                        );
-    StrL.Add('value: leading zero' +'='+ '{"k": 0.1234}'              );
+    StrL.Add('value: alone'          +'='+ '"k"'                        );
+    StrL.Add('value: leading zero 1' +'='+ '{"k": 0 }'                  );
+    StrL.Add('value: leading zero 2' +'='+ '{"k": 0.1234}'              );
     // objects
-    StrL.Add('object: empty'       +'='+ '{}'                         );
-    StrL.Add('object: empty w key' +'='+ '{"o": { }}'                 );
+    StrL.Add('object: empty'         +'='+ '{}'                         );
+    StrL.Add('object: empty w key'   +'='+ '{"o": { }}'                 );
     // arrays
-    StrL.Add('array: empty no key' +'='+ '[]'                         );
-    StrL.Add('array: empty w key'  +'='+ '{"a": [ ]}'                 );
-    StrL.Add('array: empty'        +'='+ '{"k":[]}'                   );
-    StrL.Add('array: no root'      +'='+ '[1,2]'                      );
-    StrL.Add('array: bi openned'   +'='+ '{"k":[["1","2"]]}'          );
+    StrL.Add('array: empty no key'   +'='+ '[]'                         );
+    StrL.Add('array: empty w key'    +'='+ '{"a": [ ]}'                 );
+    StrL.Add('array: empty'          +'='+ '{"k":[]}'                   );
+    StrL.Add('array: no root'        +'='+ '[1,2]'                      );
+    StrL.Add('array: bi openned'     +'='+ '{"k":[["1","2"]]}'          );
     // json inside a json
-    StrL.Add('value: escaped json' +'='+ '{"k":"{\"key\":\"value\"}"}');
+    StrL.Add('value: escaped json'   +'='+ '{"k":"{\"key\":\"value\"}"}');
     // check
     for i:=0 to StrL.Count-1 do
     begin
-      sName   := Trim( StrL.Names[i]      );
-      sTest   := Trim( StrL.Values[sName] );
+      sName := Trim( StrL.Names[i]      );
+      sTest := Trim( StrL.Values[sName] );
       if ( not N.Check(sTest) ) then
       begin
         Msg := Msg + #13#10 + sIndent + 'Expected to pass but fail: ' + sName;
@@ -458,8 +518,8 @@ begin
                      and (N['k1']['0'].AsString      = '1'      )
                      and (N['k1']['1'].AsString      = '2'      )
                      and (N['k2'].ItemType           = jitArray )
-                     and (N['k2'].Values[0].AsString = 'a'      )
-                     and (N['k2'].Values[1].AsString = 'b'      );
+                     and (N['k2'].Items[0].AsString  = 'a'      )
+                     and (N['k2'].Items[1].AsString  = 'b'      );
     // array and value setters
     N.AsJSON := '{ "a": ["1", "2"]}';
     N['a'].AsInteger := 1;
@@ -509,21 +569,27 @@ begin
     // now add a array of objects
     N.Add('array').ItemType := jitArray;
     for i := 1 to 2 do
-      N['array'].Add.AsJSON := '{"k'+IntToStr(i)+'": "�'+IntToStr(i)+'"}';
-    // save to file (not Human readable and UTF-8)
-    N.SaveToFile('test13.json', false);
+      N['array'].Add.AsJSON := '{"k'+IntToStr(i)+'": "ç'+IntToStr(i)+'"}';
+    // save to file (not Human readable and not convert to UTF-8 (it is))
+    N.SaveToFile('test13.json', false, false);
     // change N using IndexOf
     idx := N.IndexOf('array');
     if (idx >= 0) then
       N.Delete(idx);
-    // load from file (UTF-8 by default)
-    M.LoadFromFile('test13.json');
+    // load from file (no convertion to UTF-8 is needed)
+    M.LoadFromFile('test13.json', false);
     // check before and after delete
     Result := Result and (N.AsJSON = '{"i":123}'                                  )
-                     and (M.AsJSON = '{"i":123,"array":[{"k1":"�1"},{"k2":"�2"}]}');
-    // load a UTF-8 file
-    M.LoadFromFile('test13-UTF8.json');
-    Result := Result and (M['utf8'].AsString = '����');
+                     and (M.AsJSON = '{"i":123,"array":[{"k1":"ç1"},{"k2":"ç2"}]}');
+    // load a Ansi file (no convertion to UTF-8 is needed)
+    M.LoadFromFile('test13-Ansi.json', false);
+    Result := Result and (M['ansi'].AsString = UTF8ToCP1252('ãçüö'));
+    // load a UTF-8 file (no convertion to UTF-8 is needed)
+    M.LoadFromFile('test13-UTF8.json', false);
+    Result := Result and (M['utf8'].AsString = 'ãçüö');
+    // load a UTF-8 file with BOM (default UTF-8 convertion)
+    M.LoadFromFile('test13-UTF8-BOM.json', false);
+    Result := Result and (M['utf8'].AsString = 'ãçüö');
   except
     on E: Exception do
     begin
@@ -537,17 +603,23 @@ end;
 
 function Test14(out Msg: string): Boolean;
 var
-  N, M, P: TMcJsonItem;
+  N, M, P, Q: TMcJsonItem;
 begin
   Msg := 'Test 14: constructors';
   N := nil;
   M := nil;
   P := nil;
+  Q := nil;
   try
     Result := True;
     // constructor empty
     N := TMcJsonItem.Create();
     Result := Result and (N.AsJSON = '');
+    // constructor by type
+    Q := TMcJsonItem.Create(jitArray);
+    Q.Add.AsInteger := 1;
+    Q.Add.AsInteger := 2;
+    Result := Result and (Q.AsJSON = '[1,2]');
     // constructor by code
     M := TMcJsonItem.Create('{"i": 123}');
     Result := Result and (M.AsJSON = '{"i":123}');
@@ -565,6 +637,7 @@ begin
   N.Free;
   M.Free;
   P.Free;
+  Q.Free;
 end;
 
 function Test15(out Msg: string): Boolean;
@@ -612,7 +685,7 @@ begin
   N := TMcJsonItem.Create();
   Result  := True;
   anyPass := False;
-  for i := 1 to 7 do
+  for i := 1 to 9 do
   begin
     try
       N.AsJSON := '{"s": "123a"}';
@@ -624,39 +697,49 @@ begin
       end
       else if (i = 2) then
       begin
-        N['s'].Values[1].AsInteger;
+        N.Path('s/not').AsInteger;
+        anyPass := True;
+      end
+      else if (i = 3) then
+      begin
+        N['s'].Items[1].AsInteger;
         anyPass := True;
       end
       // Exception Invalid item type
-      else if (i = 3) then
+      else if (i = 4) then
       begin
         N['s'].AsObject;
         anyPass := True;
       end
       // Exception Can't convert item "%s" with value "%s" to "%s"
-      else if (i = 4) then
+      else if (i = 5) then
       begin
         N['s'].AsInteger;
         anyPass := True;
       end
       // Exception Can't convert item "%s" to "%s"
-      else if (i = 5) then
+      else if (i = 6) then
       begin
         N.AsJSON := '{"n": null}';
         N['n'].AsInteger;
         anyPass := True;
       end
       // Exception Duplicate key "%s"
-      else if (i = 6) then
+      else if (i = 7) then
       begin
-        N.SpeedUp := False;
-        N.AsJSON := '{"k":"v", "k":"v"}';
+        N.CheckException('{"k":"v", "k":"v"}');
         anyPass := True;
       end
       // Exception Error while parsing text: "%s" at pos "%s"
-      else if (i = 7) then
+      else if (i = 8) then
       begin
         N.AsJSON := '{"n"[:null}';
+        anyPass := True;
+      end
+      // Exception Error while parsing text: "%s" at pos "%s"
+      else if (i = 9) then
+      begin
+        N.AsJSON := '{"n":nul}';
         anyPass := True;
       end;
     except
@@ -701,20 +784,18 @@ begin
   Msg := 'Test 18: example like JsonDataObjects';
   Obj := TMcJsonItem.Create;
   try
-    // access (no automatic creation as in JDO)
-    Obj.Add('foo').AsString := 'bar';
-    Obj.Add('bar').AsString := 'foo';
+    // access (automatic creation as in JDO)
+    Obj.S['foo'] := 'bar';
+    Obj.S['bar'] := 'foo';
     // array creation, Obj is the owner of 'array'
-    Obj.Add('array', jitArray);
-    Obj['array'].Add.AsInteger := 10;
-    Obj['array'].Add.AsInteger := 20;
+    Obj.A['array'].Add.AsInteger := 10;
+    Obj.A['array'].Add.AsInteger := 20;
     // object creation, 'array' is the owner of ChildObj
     ChildObj := Obj['array'].Add(jitObject);
-    ChildObj.Add('value').AsNumber := 12.3;
+    ChildObj.D['value'] := 12.3;
     // array creation, ChildObj is the owner of 'subarray'
-    ChildObj.Add('subarray', jitArray);
-    ChildObj['subarray'].Add.AsInteger := 100;
-    ChildObj['subarray'].Add.AsInteger := 200;
+    ChildObj.A['subarray'].Add.AsInteger := 100;
+    ChildObj.A['subarray'].Add.AsInteger := 200;
     Result := (Obj.AsJSON = '{"foo":"bar","bar":"foo","array":[10,20,{"value":12.3,"subarray":[100,200]}]}');
   except
     on E: Exception do
@@ -734,15 +815,86 @@ begin
   N := TMcJsonItem.Create;
   Result := True;
   try
+    // how to access a at pos 1.
+    N.AsJSON := '{"a": [1, 2, 3]}';
+    Result := Result and (N['a'].Items[1].AsInteger = 2);
+    Result := Result and (N.At('a',1).AsInteger     = 2);
+    // how to access k2 at pos 1.
     N.AsJSON := '{"a": [{"k1":1,"k2":2},{"k1":10,"k2":20}]}';
-    // how to access k2 in pos 1.
-    Result := Result and (N['a'].Values[1].Items['k2'].AsInteger = 20);
-    Result := Result and (N['a'].Values[1]['k2'].AsInteger       = 20);
-    Result := Result and (N['a'].At(1, 'k2').AsInteger           = 20);
+    Result := Result and (N['a'].Items[1].Values['k2'].AsInteger = 20);
+    Result := Result and (N['a'].Items[1]['k2'].AsInteger        = 20);
+    Result := Result and (N['a'].At(1,'k2').AsInteger            = 20);
     // other uses
     N.AsJSON := '{"k1":1,"k2":2,"k3":3,"k4":4}';
-    Result := Result and (N.Values[2].AsInteger = 3);
-    Result := Result and (N.At(2).AsInteger     = 3);
+    Result := Result and (N['k3'].AsInteger    = 3);
+    Result := Result and (N.Items[2].AsInteger = 3);
+    Result := Result and (N.At(2).AsInteger    = 3);
+    Result := Result and (N.At('k3').AsInteger = 3);
+  except
+    on E: Exception do
+    begin
+      Msg := Msg + #13#10 + sIndent + 'Error: ' + E.Message;
+      Result := False;
+    end;
+  end;
+  N.Free;
+end;
+
+function Test20(out Msg: string): Boolean;
+var
+  N, M: TMcJsonItem;
+begin
+  Msg := 'Test 20: key paths';
+  N   := TMcJsonItem.Create;
+  Result := True;
+  try
+    N.AsJSON := '{"o": {"k1":"v1", "k2":"v2"}}';
+    // get second object using path of keys.
+    M := N.Path('o/k2');
+    Result := Result and (M.AsString = 'v2');
+    M := N.Path('/o/k2');
+    Result := Result and (M.AsString = 'v2');
+    M := N.Path('o/k2/');
+    Result := Result and (M.AsString = 'v2');
+    M := N.Path('/o/k2/');
+    Result := Result and (M.AsString = 'v2');
+    M := N.Path('\o\k2\');
+    Result := Result and (M.AsString = 'v2');
+    M := N.Path('o.k2');
+    Result := Result and (M.AsString = 'v2');
+  except
+    on E: Exception do
+    begin
+      Msg := Msg + #13#10 + sIndent + 'Error: ' + E.Message;
+      Result := False;
+    end;
+  end;
+  N.Free;
+end;
+
+function Test21(out Msg: string): Boolean;
+var
+  N: TMcJsonItem;
+begin
+  Msg := 'Test 21: check methods';
+  N   := TMcJsonItem.Create;
+  Result := True;
+  try
+    // bad JSON: key duplicated.
+    N.AsJSON := '{"k":1, "k":2}';
+    // check silently
+    Result := Result and (N.Check(N.AsJSON) = False);
+    // check with exception capture
+    try
+      Result := Result and (N.CheckException(N.AsJSON) = False);
+    except
+      on E: Exception do
+      begin
+        Msg := Msg + #13#10 + sIndent + 'Expected: ' + E.Message;
+        Result := Result and True;
+      end;
+    end;
+
   except
     on E: Exception do
     begin
@@ -776,9 +928,9 @@ begin
         Json.SaveToFile('test99.json');
       // remove an item
       Json.Delete('array');
-      // oops, load the backup
+      // oops, load the backup (no convertion to UTF-8 is needed)
       if (Json.Count = 4) then
-        Json.LoadFromFile('test99.json');
+        Json.LoadFromFile('test99.json', false);
       // test final result
       Result := (Json.AsJSON = '{"key1":1,"key2":true,"key3":1.234,"key4":"value 1","array":[1,2,3]}');
     except
@@ -822,6 +974,8 @@ begin
   Check(Test17, TotalPassed, TotalFailed);
   Check(Test18, TotalPassed, TotalFailed);
   Check(Test19, TotalPassed, TotalFailed);
+  Check(Test20, TotalPassed, TotalFailed);
+  Check(Test21, TotalPassed, TotalFailed);
 
   Check(Test99, TotalPassed, TotalFailed);
 

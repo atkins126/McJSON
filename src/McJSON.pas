@@ -1,4 +1,29 @@
-﻿unit McJSON;
+﻿(*******************************************************************************
+
+  The MIT License (MIT)
+
+  Copyright (c) 2021 - 2023,  HydroByte Software
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+*******************************************************************************)
+
+unit McJSON;
 
 interface
 
@@ -16,11 +41,10 @@ type
   TMcJsonItem = class
   private
     fType   : TJItemType;  // item type (value/object/array)
+    fValType: TJValueType; // value type (text/number/boolean)
     fKey    : string;      // item name
     fValue  : string;      // value (if item type is value)
-    fValType: TJValueType; // value type (text/number/boolean)
     fChild  : TList;       // child nodes (if item type is object/array)
-    fSpeedUp: Boolean;     // flag to speed up the parse task
 
     // property getters
     function fGetCount: Integer;
@@ -39,6 +63,15 @@ type
     function fGetAsString : string     ;
     function fGetAsBoolean: Boolean    ;
     function fGetAsNull   : string     ;
+    // shortener getters
+    function fGetJSON   (const aKey: string): string     ;
+    function fGetObject (const aKey: string): TMcJsonItem;
+    function fGetArray  (const aKey: string): TMcJsonItem;
+    function fGetInteger(const aKey: string): Integer    ;
+    function fGetDouble (const aKey: string): Double     ;
+    function fGetString (const aKey: string): string     ;
+    function fGetBoolean(const aKey: string): Boolean    ;
+    function fGetNull   (const aKey: string): string     ;
 
     // property setters
     procedure fSetType(aType: TJItemType);
@@ -51,16 +84,26 @@ type
     procedure fSetAsString (aValue: string     );
     procedure fSetAsBoolean(aValue: Boolean    );
     procedure fSetAsNull   (aValue: string     );
+    // shortener setters
+    procedure fSetJSON   (const aKey: string; aValue: string     );
+    procedure fSetObject (const aKey: string; aValue: TMcJsonItem);
+    procedure fSetArray  (const aKey: string; aValue: TMcJsonItem);
+    procedure fSetInteger(const aKey: string; aValue: Integer    );
+    procedure fSetDouble (const aKey: string; aValue: Double     );
+    procedure fSetString (const aKey: string; aValue: string     );
+    procedure fSetBoolean(const aKey: string; aValue: Boolean    );
+    procedure fSetNull   (const aKey: string; aValue: string     );
 
     // string single-pass parser
-    function parse(const aCode: string; aPos, aLen: Integer): Integer;
+    procedure parse(const aCode: string; aSpeed: Boolean); overload;
+    function parse(const aCode: string; aPos, aLen: Integer; aSpeed: Boolean): Integer; overload;
     // read methods used by parse
     function readString (const aCode: string; out aStr:string; aPos, aLen: Integer): Integer;
-    function readChar   (const aCode: string; aChar: Char; aPos, aLen: Integer): Integer;
+    function readChar   (const aCode: string; aChar: Char; aPos: Integer): Integer;
     function readKeyword(const aCode, aKeyword: string; aPos, aLen: Integer): Integer;
     function readValue  (const aCode: string; aPos, aLen: Integer): Integer;
-    function readObject (const aCode: string; aPos, aLen: Integer): Integer;
-    function readArray  (const aCode: string; aPos, aLen: Integer): Integer;
+    function readObject (const aCode: string; aPos, aLen: Integer; aSpeed: Boolean): Integer;
+    function readArray  (const aCode: string; aPos, aLen: Integer; aSpeed: Boolean): Integer;
     function readNumber (const aCode: string; aPos, aLen: Integer): Integer;
     function readBoolean(const aCode: string; aPos, aLen: Integer): Integer;
     function readNull   (const aCode: string; aPos, aLen: Integer): Integer;
@@ -68,7 +111,10 @@ type
     // aux functions used in ToString
     function sFormat(aHuman: Boolean): string;
     function sFormatItem(aStrS: TStringStream; const aIn, aNL, aSp: string): string;
+    // other
     function isIndexValid(aIdx: Integer): Boolean;
+    function InternalFloatToStr(aValue: Extended): string;
+    function InternalStrToFloat(const aStr: string): Extended;
 
   public
     property Count   : Integer    read fGetCount;
@@ -77,13 +123,20 @@ type
     property ItemType: TJItemType read fGetType write fSetType;
 
     property Keys  [aIdx      : Integer]: string      read fGetKey;
-    property Values[aIdx      : Integer]: TMcJsonItem read fGetItemByIdx;
-    property Items [const aKey: string ]: TMcJsonItem read fGetItemByKey; default;
+    property Items [aIdx      : Integer]: TMcJsonItem read fGetItemByIdx;
+    property Values[const aKey: string ]: TMcJsonItem read fGetItemByKey; default;
 
     property HasChild: Boolean read fHasChild;
     property IsNull  : Boolean read fIsNull;
-    property SpeedUp : Boolean read fSpeedUp write fSpeedUp;
-
+    // shorteners properties
+    property J[const aKey: string]: string      read fGetJSON    write fSetJSON   ;
+    property O[const aKey: string]: TMcJsonItem read fGetObject  write fSetObject ;
+    property A[const aKey: string]: TMcJsonItem read fGetArray   write fSetArray  ;
+    property I[const aKey: string]: Integer     read fGetInteger write fSetInteger;
+    property D[const aKey: string]: Double      read fGetDouble  write fSetDouble ;
+    property S[const aKey: string]: string      read fGetString  write fSetString ;
+    property B[const aKey: string]: Boolean     read fGetBoolean write fSetBoolean;
+    property N[const aKey: string]: string      read fGetNull    write fSetNull   ;
     // AsSomething properties
     property AsJSON   : string      read fGetAsJSON    write fSetAsJSON   ;
     property AsObject : TMcJsonItem read fGetAsObject  write fSetAsObject ;
@@ -94,13 +147,15 @@ type
     property AsBoolean: Boolean     read fGetAsBoolean write fSetAsBoolean;
     property AsNull   : string      read fGetAsNull    write fSetAsNull   ;
 
-    constructor Create; overload;
-    constructor Create(const aItem: TMcJsonItem); overload;
-    constructor Create(const aCode: string); overload;
+    constructor Create; overload; virtual; 
+    constructor Create(aJItemType: TJItemType); overload; virtual;
+    constructor Create(const aItem: TMcJsonItem); overload; virtual;
+    constructor Create(const aCode: string); overload; virtual;
     destructor  Destroy; override;
 
     procedure Clear;
     function IndexOf(const aKey: string): Integer; overload;
+    function Path(const aPath: string): TMcJsonItem; overload;
     function Add(const aKey: string = ''): TMcJsonItem; overload;
     function Add(const aKey: string; aItemType: TJItemType): TMcJsonItem; overload;
     function Add(aItemType: TJItemType): TMcJsonItem; overload;
@@ -113,20 +168,22 @@ type
     function Delete(const aKey: string): Boolean; overload;
     function HasKey(const aKey: string): Boolean;
     function IsEqual(const aItem: TMcJsonItem): Boolean;
-    function Check(const aStr: string; aSpeedUp: Boolean = False): Boolean;
+    function Check(const aStr: string; aSpeed: Boolean = False): Boolean;
+    function CheckException(const aStr: string; aSpeed: Boolean = False): Boolean;
     function CountItems: Integer;
 
     // array shortener
-    function At(aIdx: Integer; const aKey: string = ''): TMcJsonItem;
+    function At(aIdx: Integer; const aKey: string = ''): TMcJsonItem; overload;
+    function At(const aKey: string; aIdx: Integer = -1): TMcJsonItem; overload;
 
-    function ToString: string; overload;
+    function ToString: string;{$IFNDEF FPC} overload;{$ELSE} override;{$ENDIF}
     function ToString(aHuman: Boolean = False): string; overload;
     function Minify(const aCode: string): string;
 
-    procedure LoadFromStream(Stream: TStream; aUTF8: Boolean = True);
-    procedure SaveToStream(Stream: TStream; aHuman: Boolean = True);
-    procedure LoadFromFile(const aFileName: string; aUTF8: Boolean = True);
-    procedure SaveToFile(const aFileName: string; aHuman: Boolean = True);
+    procedure LoadFromStream(Stream: TStream; asUTF8: Boolean = True);
+    procedure SaveToStream(Stream: TStream; asHuman: Boolean = True; asUTF8: Boolean = True);
+    procedure LoadFromFile(const aFileName: string; asUTF8: Boolean = True);
+    procedure SaveToFile(const aFileName: string; asHuman: Boolean = True; asUTF8: Boolean = True);
 
     function GetEnumerator: TMcJsonItemEnumerator;
 
@@ -140,9 +197,9 @@ type
                                        const S3: string = '');
   end;
 
-  { TMcJsonItemEnumerator }
+  // TMcJsonItemEnumerator
   TMcJsonItemEnumerator = class
-  strict private
+  private
     fItem : TMcJsonItem;
     fIndex: Integer;
   public
@@ -152,12 +209,21 @@ type
     property Current: TMcJsonItem read GetCurrent;
   end;
 
+  // Auxiliary escape types and functions
+  TJEscapeType = (jetNormal , // #8 #9 #10 #12 #13 " \
+                  jetStrict , // Normal + /
+                  jetUnicode, // Strict + \uXXXX
+                  jetNone  ); // backwards compatibility
+  function McJsonEscapeString(const aStr: string; aEsc: TJEscapeType = jetNone): string;
+  function McJsonUnEscapeString(const aStr: string): string;
+
+  // Auxiliary functions
   function GetItemTypeStr(aType: TJItemType): string;
   function GetValueTypeStr(aType: TJValueType): string;
 
 implementation
 
-const C_MCJSON_VERSION = '0.9.8';
+const C_MCJSON_VERSION = '1.1.1';
 const C_EMPTY_KEY      = '__a3mptyStr__';
 
 resourcestring
@@ -169,36 +235,39 @@ resourcestring
   SIndexInvalid      = 'Invalid index: %s';
 
 const
-  WHITESPACE: set of char = [#9, #10, #13, #32]; // \t(ab), \r(CR), \n(LF), spc
-  LINEBREAK:  set of char = [#10, #13];
-  ESCAPES:    set of char = ['b', 't', 'n', 'f', 'r', 'u', '"', '\', '/'];
-  DIGITS:     set of char = ['0'..'9'];
-  SIGNS:      set of char = ['+', '-'];
-  CLOSES:     set of char = ['}', ']'];
-  HEXA:       set of char = ['0'..'9', 'A'..'F', 'a'..'f'];
+  WHITESPACE: set of Char = [#9, #10, #13, #32]; // \t(ab), \n(LF), \r(CR), spc
+  LINEBREAK:  set of Char = [#10, #13];
+  ESCAPES:    set of Char = ['b', 't', 'n', 'f', 'r', '"', '/', '\', 'u' ];
+  DIGITS:     set of Char = ['0'..'9'];
+  SIGNS:      set of Char = ['+', '-'];
+  CLOSES:     set of Char = ['}', ']'];
+  HEXA:       set of Char = ['0'..'9', 'A'..'F', 'a'..'f'];
+  PATHSEPS:   set of Char = ['\', '/', '.'];
+  // escape chars names
+  CHAR_ESCAPE    = '\';
+  CHAR_BACKSPACE = 'b';
+  CHAR_H_TAB     = 't';
+  CHAR_NEW_LINE  = 'n';
+  CHAR_FORM_FEED = 'f';
+  CHAR_C_RETURN  = 'r';
+  CHAR_Q_MARK    = '"';
+  CHAR_SOLIDUS   = '/';
+  CHAR_R_SOLIDUS = '\';
+  CHAR_U_HEX     = 'u';
+  // escape chars integer values
+  ID_BACKSPACE =   #8;
+  ID_H_TAB     =   #9;
+  ID_NEW_LINE  =  #10;
+  ID_FORM_FEED =  #12;
+  ID_C_RETURN  =  #13;
+  ID_Q_MARK    =  #34; // '"'
+  ID_SOLIDUS   =  #47; // '/'
+  ID_R_SOLIDUS =  #92; // '\'
+  ID_U_HEX     = #117; // 'u'
 
-// Auxiliary functions
-function GetItemTypeStr(aType: TJItemType): string;
-begin
-  Result := 'unknown';
-  case aType of
-    jitValue : Result := 'value' ;
-    jitObject: Result := 'object';
-    jitArray : Result := 'array' ;
-    jitUnset : Result := 'unset' ;
-  end;
-end;
-
-function GetValueTypeStr(aType: TJValueType): string;
-begin
-  Result := 'unknown';
-  case aType of
-    jvtString : Result := 'string' ;
-    jvtNumber : Result := 'number' ;
-    jvtBoolean: Result := 'boolean';
-    jvtNull   : Result := 'null'   ;
-  end;
-end;
+{ ---------------------------------------------------------------------------- }
+{ Auxiliary private functions }
+{ ---------------------------------------------------------------------------- }
 
 function escapeChar(const aStr: string; aPos, aLen: Integer; out aUnk: Boolean): Integer;
 var
@@ -259,6 +328,7 @@ begin
   i := 1;
   j := 1;
   len := Length(aStr);
+  sRes := '';
   SetLength(sRes, len);
   opn := false;
 
@@ -284,10 +354,25 @@ begin
       end;
     end;
   end;
-  if (j > 1)
-    then SetLength(sRes, j-1);
+  if (j > 1) then
+    SetLength(sRes, j-1);
   // result
   Result := sRes;
+end;
+
+function findUtf8BOM(const Stream: TStream): Int64;
+var
+  bom: array[0..2] of Byte;
+begin
+  Result := 0;
+  if (Stream.Size > Length(bom)) then
+  begin
+    Stream.Read(bom, sizeof(bom));
+    if ( (bom[0] = $EF) and // UTF-8 BOM
+         (bom[1] = $BB) and
+         (bom[2] = $BF) ) then 
+      Result := 3;
+  end;
 end;
 
 { ---------------------------------------------------------------------------- }
@@ -297,7 +382,9 @@ end;
 function TMcJsonItem.fGetCount: Integer;
 begin
   if (Self = nil) then Error(SItemNil, 'get count');
-  Result := fChild.Count;
+  if (Assigned(fChild))
+    then Result := fChild.Count
+    else Result := 0;
 end;
 
 function TMcJsonItem.fGetKey(aIdx: Integer): string;
@@ -308,8 +395,7 @@ begin
   // return the key of the idx-th child
   Result := '';
   aItem := fGetItemByIdx(aIdx);
-  if (aItem <> nil) then
-    Result := aItem.fKey;
+  Result := aItem.fKey;
 end;
 
 function TMcJsonItem.fGetType(): TJItemType;
@@ -328,29 +414,31 @@ begin
   // find index of item with aKey
   idx := Self.IndexOf(aKey);
   if (idx >= 0)
-    then Result := TMcJsonItem(fChild[idx]);
+    then Result := TMcJsonItem(fChild[idx])
+    else Error(SItemNil, 'get item by key ' + Qot(aKey));
 end;
 
 function TMcJsonItem.fGetItemByIdx(aIdx: Integer): TMcJsonItem;
 begin
-  Result := nil;
   // check
   if (Self = nil) then Error(SItemNil, 'get item by index ' + IntToStr(aIdx));
   // type compatibility check
   if (fType <> jitObject) and
      (fType <> jitArray ) then
-    Exit;
+    Error(SItemNil, 'get item by index ' + IntToStr(aIdx));
   // range check
   if (not isIndexValid(aIdx)) then
     Error(SIndexInvalid, 'get item by index ' + IntToStr(aIdx));
-  // object cannot return an element with an index higher than the maximum
+  // return valid child at index aIdx
   Result := TMcJsonItem(fChild[aIdx]);
 end;
 
 function TMcJsonItem.fHasChild: Boolean;
 begin
   if (Self = nil) then Error(SItemNil, 'has child');
-  Result := ( fChild.Count > 0 );
+  if (Assigned(fChild))
+    then Result := ( fChild.Count > 0 )
+    else Result := False;
 end;
 
 function TMcJsonItem.fIsNull: Boolean;
@@ -421,9 +509,9 @@ begin
   // try to convert
   try
     case fValType of
-      jvtNumber : Ans := StrToFloat(fValue);       // expected
-      jvtString : Ans := StrToFloat(fValue);       // convertion
-      jvtBoolean: Ans := Integer(fValue = 'true'); // convertion
+      jvtNumber : Ans := InternalStrToFloat(fValue); // expected
+      jvtString : Ans := InternalStrToFloat(fValue); // convertion
+      jvtBoolean: Ans := Integer(fValue = 'true');   // convertion
       else        Aux := -1;
     end;
   except
@@ -480,9 +568,66 @@ begin
   Result := fValue;
 end;
 
+// shortener getters
+function TMcJsonItem.fGetJSON(const aKey: string): string;
+begin
+  if ( not HasKey(aKey) )
+    then Result := Self.Add(aKey, jitObject).AsJSON
+    else Result := Self[aKey].AsJSON;
+end;
+
+function TMcJsonItem.fGetObject(const aKey: string): TMcJsonItem;
+begin
+  if ( not HasKey(aKey) )
+    then Result := Self.Add(aKey, jitObject).AsObject
+    else Result := Self[aKey].AsObject;
+end;
+
+function TMcJsonItem.fGetArray(const aKey: string): TMcJsonItem;
+begin
+  if ( not HasKey(aKey) )
+    then Result := Self.Add(aKey, jitArray).AsArray
+    else Result := Self[aKey].AsArray;
+end;
+
+function TMcJsonItem.fGetInteger(const aKey: string): Integer;
+begin
+  if ( not HasKey(aKey) )
+    then Result := Self.Add(aKey, jitValue).AsInteger
+    else Result := Self[aKey].AsInteger;
+end;
+
+function TMcJsonItem.fGetDouble(const aKey: string): Double;
+begin
+  if ( not HasKey(aKey) )
+    then Result := Self.Add(aKey, jitValue).AsNumber
+    else Result := Self[aKey].AsNumber;
+end;
+
+function TMcJsonItem.fGetString(const aKey: string): string;
+begin
+  if ( not HasKey(aKey) )
+    then Result := Self.Add(aKey, jitValue).AsString
+    else Result := Self[aKey].AsString;
+end;
+
+function TMcJsonItem.fGetBoolean(const aKey: string): Boolean;
+begin
+  if ( not HasKey(aKey) )
+    then Result := Self.Add(aKey, jitValue).AsBoolean
+    else Result := Self[aKey].AsBoolean;
+end;
+
+function TMcJsonItem.fGetNull(const aKey: string): string;
+begin
+  if ( not HasKey(aKey) )
+    then Result := Self.Add(aKey, jitValue).AsNull
+    else Result := Self[aKey].AsNull;
+end;
+
 procedure TMcJsonItem.fSetType(aType: TJItemType);
 var
-  i: Integer;
+  k: Integer;
 begin
   if (Self = nil) then Error(SItemNil, 'set type');
   // if an array or object is converted to a number, clear all descendants
@@ -500,36 +645,24 @@ begin
   // if the array is converted into an object, then assign keys to all its elements
   else if (aType = jitObject) and (fType = jitArray) then
   begin
-    for i := 0 to (fChild.Count - 1) do
-      TMcJsonItem(fChild[i]).fKey := IntToStr(i);
+    for k := 0 to (fChild.Count - 1) do
+      TMcJsonItem(fChild[k]).fKey := IntToStr(k);
   end
   // if an object is converted into an array, then remove the keys from its descendants
   else if (aType = jitArray) and (fType = jitObject) then
   begin
-    for i := 0 to (fChild.Count - 1) do
-      TMcJsonItem(fChild[i]).fKey := '';
+    for k := 0 to (fChild.Count - 1) do
+      TMcJsonItem(fChild[k]).fKey := '';
   end;
   // return aked type
   fType := aType;
 end;
 
 procedure TMcJsonItem.fSetAsJSON(aValue: string);
-var
-  c, len: Integer;
 begin
   if (Self = nil) then Error(SItemNil, 'set as JSON');
-  Clear;
-  len := Length(aValue);
-  c   := 1;
-  try
-    c := Self.parse(aValue, 1, len);
-  except
-    on EOutOfMemory do
-      Error(SItemNil, 'out of memory with ' + IntToStr(CountItems) + ' items');
-  end;
-  // valid-JSON
-  if (c < len) then
-    Error(SParsingError, 'bad json', IntToStr(len));
+  // speed up = no key duplication verification (default)
+  Self.parse(aValue, True);
 end;
 
 procedure TMcJsonItem.fSetAsObject(aValue: TMcJsonItem);
@@ -552,7 +685,7 @@ end;
 
 procedure TMcJsonItem.fSetAsInteger(aValue: Integer);
 var
-  i: Integer;
+  k: Integer;
 begin
   if (Self  = nil     ) then Error(SItemNil, 'set as integer');
   // if unset, set as value
@@ -560,8 +693,8 @@ begin
   // if container, set aValue for each child
   if (fType = jitArray) or (fType = jitObject) then
   begin
-     for i := 0 to (fChild.Count - 1) do
-       TMcJsonItem(fChild[i]).AsInteger := aValue;
+    for k := 0 to (fChild.Count - 1) do
+      TMcJsonItem(fChild[k]).AsInteger := aValue;
   end
   else
   begin
@@ -573,7 +706,7 @@ end;
 
 procedure TMcJsonItem.fSetAsDouble(aValue: Double);
 var
-  i: Integer;
+  k: Integer;
 begin
   if (Self  = nil     ) then Error(SItemNil, 'set as double');
   // if unset, set as value
@@ -581,20 +714,20 @@ begin
   // if container, set aValue for each child
   if (fType = jitArray) or (fType = jitObject) then
   begin
-     for i := 0 to (fChild.Count - 1) do
-       TMcJsonItem(fChild[i]).AsNumber := aValue;
+    for k := 0 to (fChild.Count - 1) do
+      TMcJsonItem(fChild[k]).AsNumber := aValue;
   end
   else
   begin
     if (fValType <> jvtNumber) then fValType := jvtNumber;
     // set aValue as string
-    fValue := FloatToStr(aValue);
+    fValue := InternalFloatToStr(aValue);
   end;
 end;
 
 procedure TMcJsonItem.fSetAsString(aValue: string);
 var
-  i: Integer;
+  k: Integer;
 begin
   if (Self  = nil     ) then Error(SItemNil, 'set as string');
   // if unset, set as value
@@ -602,8 +735,8 @@ begin
   // if container, set aValue for each child
   if (fType = jitArray) or (fType = jitObject) then
   begin
-     for i := 0 to (fChild.Count - 1) do
-       TMcJsonItem(fChild[i]).AsString := aValue;
+    for k := 0 to (fChild.Count - 1) do
+      TMcJsonItem(fChild[k]).AsString := aValue;
   end
   else
   begin
@@ -615,7 +748,7 @@ end;
 
 procedure TMcJsonItem.fSetAsBoolean(aValue: Boolean);
 var
-  i: Integer;
+  k: Integer;
 begin
   if (Self  = nil     ) then Error(SItemNil, 'set as boolean');
   // if unset, set as value
@@ -623,8 +756,8 @@ begin
   // if container, set aValue for each child
   if (fType = jitArray) or (fType = jitObject) then
   begin
-     for i := 0 to (fChild.Count - 1) do
-       TMcJsonItem(fChild[i]).AsBoolean := aValue;
+    for k := 0 to (fChild.Count - 1) do
+      TMcJsonItem(fChild[k]).AsBoolean := aValue;
   end
   else
   begin
@@ -638,7 +771,7 @@ end;
 
 procedure TMcJsonItem.fSetAsNull(aValue: string);
 var
-  i: Integer;
+  k: Integer;
 begin
   if (Self  = nil     ) then Error(SItemNil, 'set as null');
   // if unset, set as value
@@ -646,8 +779,8 @@ begin
   // if container, set aValue for each child
   if (fType = jitArray) or (fType = jitObject) then
   begin
-     for i := 0 to (fChild.Count - 1) do
-       TMcJsonItem(fChild[i]).AsNull := 'null'; // ignore aValue
+    for k := 0 to (fChild.Count - 1) do
+      TMcJsonItem(fChild[k]).AsNull := 'null'; // ignore aValue
   end
   else
   begin
@@ -657,7 +790,82 @@ begin
   end;
 end;
 
-function TMcJsonItem.parse(const aCode: string; aPos, aLen: Integer): Integer;
+// shortener setters
+procedure TMcJsonItem.fSetJSON(const aKey: string; aValue: string);
+begin
+  if ( not HasKey(aKey) )
+    then Self.Add(aKey).AsJSON := aValue
+    else Self[aKey].AsJSON     := aValue;
+end;
+
+procedure TMcJsonItem.fSetObject(const aKey: string; aValue: TMcJsonItem);
+begin
+  if ( not HasKey(aKey) )
+    then Self.Add(aKey).AsObject := aValue
+    else Self[aKey].AsObject     := aValue;
+end;
+
+procedure TMcJsonItem.fSetArray(const aKey: string; aValue: TMcJsonItem);
+begin
+  if ( not HasKey(aKey) )
+    then Self.Add(aKey).AsArray := aValue
+    else Self[aKey].AsArray     := aValue;
+end;
+
+procedure TMcJsonItem.fSetInteger(const aKey: string; aValue: Integer);
+begin
+  if ( not HasKey(aKey) )
+    then Self.Add(aKey).AsInteger := aValue
+    else Self[aKey].AsInteger     := aValue;
+end;
+
+procedure TMcJsonItem.fSetDouble(const aKey: string; aValue: Double);
+begin
+  if ( not HasKey(aKey) )
+    then Self.Add(aKey).AsNumber := aValue
+    else Self[aKey].AsNumber     := aValue;
+end;
+
+procedure TMcJsonItem.fSetString(const aKey: string; aValue: string);
+begin
+  if ( not HasKey(aKey) )
+    then Self.Add(aKey).AsString := aValue
+    else Self[aKey].AsString     := aValue;
+end;
+
+procedure TMcJsonItem.fSetBoolean(const aKey: string; aValue: Boolean);
+begin
+  if ( not HasKey(aKey) )
+    then Self.Add(aKey).AsBoolean := aValue
+    else Self[aKey].AsBoolean     := aValue;
+end;
+
+procedure TMcJsonItem.fSetNull(const aKey: string; aValue: string);
+begin
+  if ( not HasKey(aKey) )
+    then Self.Add(aKey).AsNull := aValue
+    else Self[aKey].AsNull     := aValue;
+end;
+
+procedure TMcJsonItem.parse(const aCode: string; aSpeed: Boolean);
+var
+  c, len: Integer;
+begin
+  Clear;
+  len := Length(aCode);
+  c   := 1;
+  try
+    c := Self.parse(aCode, 1, len, aSpeed);
+  except
+    on EOutOfMemory do
+      Error(SItemNil, 'out of memory with ' + IntToStr(CountItems) + ' items');
+  end;
+  // valid-JSON
+  if (c < len) then
+    Error(SParsingError, 'bad json', IntToStr(len));
+end;
+
+function TMcJsonItem.parse(const aCode: string; aPos, aLen: Integer; aSpeed: Boolean): Integer;
 begin
   Result := aPos;
   // check position
@@ -667,8 +875,8 @@ begin
   Inc(aPos, escapeWS(aCode, aPos, aLen));
   // now in the first character our open parenthesis
   case aCode[aPos] of
-    '{':                aPos := readObject (aCode, aPos, aLen); // recursive
-    '[':                aPos := readArray  (aCode, aPos, aLen); // recursive
+    '{':                aPos := readObject (aCode, aPos, aLen, aSpeed); // recursive
+    '[':                aPos := readArray  (aCode, aPos, aLen, aSpeed); // recursive
     '"':                aPos := readValue  (aCode, aPos, aLen);
     '0'..'9', '+', '-': aPos := readNumber (aCode, aPos, aLen);
     't', 'T', 'f', 'F': aPos := readBoolean(aCode, aPos, aLen);
@@ -685,7 +893,7 @@ begin
   Result := aPos;
 end;
 
-function TMcJsonItem.readObject(const aCode: string; aPos, aLen: Integer): Integer;
+function TMcJsonItem.readObject(const aCode: string; aPos, aLen: Integer; aSpeed: Boolean): Integer;
 var
   c: Integer;
   aItem: TMcJsonItem;
@@ -704,7 +912,7 @@ begin
   begin
     // parse ','
     if (not first) then
-      c := readChar(aCode, ',', c, aLen);
+      c := readChar(aCode, ',', c);
     first := False;
     // escape white spaces
     Inc(c, escapeWS(aCode, c, aLen));
@@ -716,7 +924,7 @@ begin
     // create a new item with parsed key
     // check duplicate (subject to speed up flag)
     aItem := nil;
-    if (fSpeedUp) then
+    if (aSpeed) then
       aItem := Self.Add(sKey)
     else
     begin
@@ -728,12 +936,12 @@ begin
     // escape white spaces
     Inc(c, escapeWS(aCode, c, aLen));
     // parse ':'
-    c := readChar(aCode, ':', c, aLen);
+    c := readChar(aCode, ':', c);
     // escape white spaces
     Inc(c, escapeWS(aCode, c, aLen));
     // parsing a value (recursive)
     if (aItem <> nil) then
-      c := aItem.parse(aCode, c, aLen);
+      c := aItem.parse(aCode, c, aLen, aSpeed);
     // move on
     Inc(c, escapeWS(aCode, c, aLen));
   end;
@@ -746,7 +954,7 @@ begin
   Result := c+1;
 end;
 
-function TMcJsonItem.readArray(const aCode: string; aPos, aLen: Integer): Integer;
+function TMcJsonItem.readArray(const aCode: string; aPos, aLen: Integer; aSpeed: Boolean): Integer;
 var
   c: Integer;
   aItem: TMcJsonItem;
@@ -764,14 +972,14 @@ begin
   begin
     // parse ','
     if (not first) then
-      c := readChar(aCode, ',', c, aLen);
+      c := readChar(aCode, ',', c);
     first := False;
     // escape white spaces
     Inc(c, escapeWS(aCode, c, aLen));
     // Creating a new value (here explicity whith no key)
     aItem := Self.Add();
     // parsing values (recursive)
-    c := aItem.parse(aCode, c, aLen); // 1,2,3 or {...},{...}
+    c := aItem.parse(aCode, c, aLen, aSpeed); // 1,2,3 or {...},{...}
     if (c > aLen) then
       Error(SParsingError, 'bad array', IntToStr(aLen));
     // move on
@@ -801,7 +1009,7 @@ begin
       // do escapes
       Inc(c, escapeChar(aCode, c, aLen, unk));
       // Valid-JSON: break lines
-      if (aCode[c] in LINEBREAK) then
+      if (c > aLen) or (aCode[c] in LINEBREAK) then
         Error(SParsingError, 'line break', IntToStr(c));
       // Valid-JSON: unknown escape
       if (unk) then
@@ -816,8 +1024,9 @@ begin
   Result := c;
 end;
 
-function TMcJsonItem.readChar(const aCode: string; aChar: Char; aPos, aLen: Integer): Integer;
+function TMcJsonItem.readChar(const aCode: string; aChar: Char; aPos: Integer): Integer;
 begin
+  // Valid-JSON: unexpected char
   if ( aCode[aPos] <> aChar ) then
     Error(SParsingError, 'expected ' + aChar + ' got ' + aCode[aPos], IntToStr(aPos));
   // stop next to aChar
@@ -829,11 +1038,14 @@ var
   len: Integer;
   sAux: string;
 begin
-  len  := Length(aKeyword);
+  len := Length(aKeyword);
+  // valid-JSON
+  if (aPos+len > aLen) then
+    Error(SParsingError, 'bad reserved keyword', IntToStr(aLen));
   sAux := System.Copy(aCode, aPos, len);
   // valid-JSON
   if (Lowercase(sAux) <> aKeyword) then
-    Error(SParsingError, 'invalid keyword ' + sAux, IntToStr(aPos));
+    Error(SParsingError, 'invalid reserved keyword ' + sAux, IntToStr(aPos));
   // stop next to keyword last char
   Result := aPos + len;
 end;
@@ -860,7 +1072,7 @@ end;
 
 function TMcJsonItem.readNumber(const aCode: string; aPos, aLen: Integer): Integer;
 var
-  c, ePos: Integer;
+  c, cEnd, ePos: Integer;
 begin
   // we got here because current symbol was '+/-' or Digit
   c := aPos;
@@ -893,6 +1105,8 @@ begin
   Self.fSetType(jitValue);
   Self.fValType := jvtNumber;
   Self.fValue   := System.Copy(aCode, aPos, c-aPos);
+  // last number pos.
+  cEnd := c;
   // escape white spaces
   Inc(c, escapeWS(aCode, c, aLen));
   // valid-JSON: not a number
@@ -900,7 +1114,7 @@ begin
           (aCode[c] in CLOSES)) then
     Error(SParsingError, 'not a number', IntToStr(c));
   // valid-JSON: leading zero
-  if (aCode[aPos]   =  '0') and (aPos < aLen) and (c-aPos > 1) and
+  if (aCode[aPos]   =  '0') and (aPos < aLen) and (cEnd-aPos > 1) and
      (aCode[aPos+1] <> '.') then
     Error(SParsingError, 'bad number, leading zero', IntToStr(c));
   // stop next to number last char
@@ -910,11 +1124,9 @@ end;
 function TMcJsonItem.readBoolean(const aCode: string; aPos, aLen: Integer): Integer;
 var
   c: Integer;
-  sAux: string;
 begin
   // we got here because current symbol was 't/T' or 'f/F'
-  c    := aPos;
-  sAux := '';
+  c := aPos;
   // check boolean value 'true'
   if (aCode[aPos] = 't') or
      (aCode[aPos] = 'T') then
@@ -939,11 +1151,9 @@ end;
 function TMcJsonItem.readNull(const aCode: string; aPos, aLen: Integer): Integer;
 var
   c: Integer;
-  sAux: string;
 begin
   // we got here because current symbol was 'n/N'
-  c    := aPos;
-  sAux := '';
+  c := aPos;
   // check if null
   if (aCode[aPos] = 'n') or
      (aCode[aPos] = 'N') then
@@ -984,7 +1194,7 @@ end;
 
 function TMcJsonItem.sFormatItem(aStrS: TStringStream; const aIn, aNL, aSp: string): string;
 var
-  i, len: Integer;
+  k, len: Integer;
   sGoIn: string;
 begin
   Result := '';
@@ -1004,11 +1214,11 @@ begin
       // use aSp to define if aHuman is true.
       if (aSp <> ':') then sGoIn := aIn + '  ';
       // mount recursively
-      for i := 0 to len do
+      for k := 0 to len do
       begin
         aStrS.WriteString(sGoIn);
-        aStrS.WriteString(TMcJsonItem(fChild[i]).sFormatItem(aStrS, sGoIn, aNL, aSP) );
-        if ( i < len ) then
+        aStrS.WriteString(TMcJsonItem(fChild[k]).sFormatItem(aStrS, sGoIn, aNL, aSP) );
+        if ( k < len ) then
           aStrS.WriteString(',' + aNL);
       end;
       aStrS.WriteString(aNL + aIn + '}');
@@ -1023,11 +1233,11 @@ begin
       // use aSp to define if aHuman is true.
       if (aSp <> ':') then sGoIn := aIn + '  ';
       // mount recursively
-      for i := 0 to len do
+      for k := 0 to len do
       begin
         aStrS.WriteString(sGoIn);
-        aStrS.WriteString(TMcJsonItem(fChild[i]).SFormatItem(aStrS, sGoIn, aNL, aSP) );
-        if ( i < len ) then
+        aStrS.WriteString(TMcJsonItem(fChild[k]).SFormatItem(aStrS, sGoIn, aNL, aSP) );
+        if ( k < len ) then
           aStrS.WriteString(','+ aNL);
       end;
       aStrS.WriteString(aNL + aIn + ']');
@@ -1040,6 +1250,17 @@ begin
       if (fValType = jvtString)
         then aStrS.WriteString(Qot(fValue))
         else aStrS.WriteString(    fValue );
+    end;
+    // empty key and/or empty value
+    jitUnset:
+    begin
+      if (fKey <> '') then
+      begin
+        aStrS.WriteString(QotKey(fKey) + aSp);
+        if (fValType = jvtString)
+          then aStrS.WriteString(Qot(fValue))
+          else aStrS.WriteString(    fValue );
+      end;
     end;
   end;
 end;
@@ -1054,27 +1275,50 @@ begin
   Result := Ans;
 end;
 
+function TMcJsonItem.InternalFloatToStr(aValue: Extended): string;
+var
+  Fmt: TFormatSettings;
+begin
+  // internally, use "." as Decimal Separator.
+  Fmt.DecimalSeparator := '.';
+  // will raize an exception if aValue not valid.
+  Result := FloatToStr(aValue, Fmt);
+end;
+
+function TMcJsonItem.InternalStrToFloat(const aStr: string): Extended;
+var
+  Fmt: TFormatSettings;
+begin
+  // internally, use "." as Decimal Separator.
+  Fmt.DecimalSeparator := '.';
+  // will raize an exception if aValue not valid.
+  Result := StrToFloat(aStr, Fmt);
+end;
+
 { ---------------------------------------------------------------------------- }
 { TMcJsonItem - Public methods }
 { ---------------------------------------------------------------------------- }
 
 constructor TMcJsonItem.Create;
 begin
-  fChild   := TList.Create;
+  fChild   := nil;
   fType    := jitUnset;
-  fSpeedUp := True;
+end;
+
+constructor TMcJsonItem.Create(aJItemType: TJItemType);
+begin
+  Create;
+  Self.ItemType := aJItemType;
 end;
 
 constructor TMcJsonItem.Create(const aItem: TMcJsonItem);
 begin
-  inherited Create;
   Create;
   Self.AsJSON := aItem.AsJSON;
 end;
 
 constructor TMcJsonItem.Create(const aCode: string);
 begin
-  inherited Create;
   Create;
   try
     Self.AsJSON := aCode;
@@ -1092,30 +1336,34 @@ end;
 
 procedure TMcJsonItem.Clear;
 var
-  i: Integer;
+  k: Integer;
 begin
-  if (Self = nil) then Error(SItemNil, 'clear');
-  // free memory of all children (will be recursive)
-  for i := 0 to (fChild.Count - 1) do
-    TMcJsonItem(fChild[i]).Free;
-  // clear list
-  fChild.Clear;
+  if (Self   = nil) then Error(SItemNil, 'clear');
+  if (Assigned(fChild)) then
+  begin
+    // free memory of all children (will be recursive)
+    for k := 0 to (fChild.Count - 1) do
+      TMcJsonItem(fChild[k]).Free;
+    // clear list
+    fChild.Clear;
+  end;  
 end;
 
 function TMcJsonItem.IndexOf(const aKey: string): Integer;
 var
-  i, idx: Integer;
+  k, idx: Integer;
 begin
   idx    := -1;
   Result := idx;
   // check
-  if  (Self = nil) then Error(SItemNil, 'index of');
+  if (Self = nil) then Error(SItemNil, 'index of');
+  if (not Assigned(fChild)) then Exit;
   // looking for an element
-  for i := 0 to (fChild.Count - 1) do
+  for k := 0 to (fChild.Count - 1) do
   begin
-    if (TMcJsonItem(fChild[i]).fKey = aKey) then
+    if (TMcJsonItem(fChild[k]).fKey = aKey) then
     begin
-      idx := i;
+      idx := k;
       Break;
     end;
   end;
@@ -1123,6 +1371,49 @@ begin
   if (idx >= 0           ) and
      (idx <  fChild.Count) then
     Result := idx;
+end;
+
+function TMcJsonItem.Path(const aPath: string): TMcJsonItem;
+
+  function GetKeyByPath(const aPath: string; var aPos, aLen: Integer): string;
+  var
+    c: Integer;
+  begin
+    Result := '';
+    // check start with sep
+    if (aPath[aPos] in PATHSEPS) then
+      Inc(aPos);
+    c := aPos;
+    while (c <= aLen) and not (aPath[c] in PATHSEPS) do
+    begin
+      Inc(c);
+    end;
+    // copy between seps
+    if (c-aPos >= 0) then
+      Result := System.Copy(aPath, aPos, c-aPos);
+    // move on  
+    aPos := c;
+  end;
+
+var
+  aItem: TMcJsonItem;
+  c, len: Integer;
+  sKey: string;
+begin
+  if (Self = nil) then Error(SItemNil, 'get by path ' + Qot(aPath));
+  aItem  := Self;
+  // parse path of keys using seps
+  c   := 1;
+  len := Length(aPath);
+  while (c < len) do
+  begin
+    // get by key
+    sKey := GetKeyByPath(aPath, c, len);
+    if (sKey <> '') then
+      aItem := aItem.fGetItemByKey(sKey);
+  end;
+  // result aItem to permit chain
+  Result := aItem;
 end;
 
 function TMcJsonItem.Add(const aKey: string): TMcJsonItem;
@@ -1133,9 +1424,26 @@ begin
   // check unset item
   if (fType = jitUnset) then
     fSetType(jitObject);
-  // create a new item with aKey and add it.
+  // create a new item and check its parent type.
   aItem := TMcJsonItem.Create;
-  aItem.fKey := aKey;
+  // parent is array
+  if (fType = jitArray) then
+  begin
+    // if not empty key, create object
+    if (aKey <> '') then
+      aItem.Add(aKey)
+  end
+  // parent is object or value
+  else
+  begin
+    // check empty key {"":"value"}
+    if (aKey = '')
+      then aItem.fKey := C_EMPTY_KEY
+      else aItem.fKey := aKey;
+  end;
+  // child on demand
+  if (not Assigned(fChild)) then
+    fChild := TList.Create;
   fChild.Add(aItem);
   // result aItem to permit chain
   Result := aItem;
@@ -1175,6 +1483,8 @@ begin
   // create a new item copy of aItem and add it.
   aNewItem := TMcJsonItem.Create(aItem);
   // add item.
+  if (not Assigned(fChild)) then
+    fChild := TList.Create;
   fChild.Add(aNewItem);
   // result aNewItem to permit chain
   Result := aNewItem;
@@ -1213,6 +1523,8 @@ begin
   // create a new item with aKey and insert it.
   aItem := TMcJsonItem.Create;
   aItem.fKey := aKey;
+  if (not Assigned(fChild)) then
+    fChild := TList.Create;
   fChild.Insert(aIdx, aItem);
   // result aItem to permit chain
   Result := aItem;
@@ -1233,6 +1545,8 @@ begin
   // create a new item copy of aItem and insert it.
   aNewItem := TMcJsonItem.Create(aItem);
   // insert item.
+  if (not Assigned(fChild)) then
+    fChild := TList.Create;
   fChild.Insert(aIdx, aNewItem);
   // result aNewItem to permit chain
   Result := aNewItem;
@@ -1282,7 +1596,8 @@ end;
 function TMcJsonItem.HasKey(const aKey: string): Boolean;
 begin
   if (Self = nil) then Error(SItemNil, 'has key ' + Qot(aKey));
-  Result := ( fGetItemByKey(aKey) <> nil );
+  // find index of item with aKey
+  Result := ( Self.IndexOf(aKey) >= 0 );
 end;
 
 function TMcJsonItem.IsEqual(const aItem: TMcJsonItem): Boolean;
@@ -1293,20 +1608,36 @@ begin
     Result := (Self.AsJSON = aItem.AsJSON);
 end;
 
-function TMcJsonItem.Check(const aStr: string; aSpeedUp: Boolean): Boolean;
+function TMcJsonItem.Check(const aStr: string; aSpeed: Boolean): Boolean;
 var
   aItem: TMcJsonItem;
 begin
+  if (Self = nil) then Error(SItemNil, 'check');
   aItem := TMcJsonItem.Create;
   try
-    aItem.fSpeedUp := aSpeedUp;
-    aItem.AsJSON   := aStr;
-//    Result := True;
-    Result := (aItem.AsJSON = trimWS(aStr));
-  except
-    Result := False;
+    try
+      aItem.parse(aStr, aSpeed);
+      Result := (aItem.AsJSON = trimWS(aStr));
+    except
+      Result := False;
+    end;
+  finally
+    aItem.Free;
   end;
-  aItem.Free;
+end;
+
+function TMcJsonItem.CheckException(const aStr: string; aSpeed: Boolean): Boolean;
+var
+  aItem: TMcJsonItem;
+begin
+  if (Self = nil) then Error(SItemNil, 'check exception');
+  aItem := TMcJsonItem.Create;
+  try
+    aItem.parse(aStr, aSpeed);
+    Result := (aItem.AsJSON = trimWS(aStr));
+  finally
+    aItem.Free;
+  end;
 end;
 
 function TMcJsonItem.CountItems: Integer;
@@ -1329,14 +1660,23 @@ function TMcJsonItem.At(aIdx: Integer; const aKey: string): TMcJsonItem;
 var
   aItem: TMcJsonItem;
 begin
-  Result := nil;
+  // get by index
   aItem := fGetItemByIdx(aIdx);
-  if (aKey <> '') then
-  begin
+  // get by key
+  if ((aKey <> '') and (aItem <> nil)) then
     aItem := aItem.fGetItemByKey(aKey);
-    if (aItem = nil) then
-      Error(SItemNil, 'at item with key ' + Qot(aKey));
-  end;
+  Result := aItem;
+end;
+
+function TMcJsonItem.At(const aKey: string; aIdx: Integer): TMcJsonItem;
+var
+  aItem: TMcJsonItem;
+begin
+  // get by key
+  aItem := fGetItemByKey(aKey);
+  // get by index
+  if ((aIdx >= 0) and (aItem <> nil)) then
+    aItem := aItem.fGetItemByIdx(aIdx);
   Result := aItem;
 end;
 
@@ -1355,31 +1695,38 @@ begin
   Result := trimWS(aCode);
 end;
 
-procedure TMcJsonItem.LoadFromStream(Stream: TStream; aUTF8: Boolean);
+procedure TMcJsonItem.LoadFromStream(Stream: TStream; asUTF8: Boolean);
 var
   sCode: AnsiString;
   len  : Int64;
 begin
+  // check UTF-8 BOM
+  Stream.Position := findUtf8BOM(Stream);
+  // dimention and read stream to string
   len   := Stream.Size - Stream.Position;
   sCode := '';
   SetLength(sCode, len);
   Stream.Read(Pointer(sCode)^, len);
-  if aUTF8
-    then Self.AsJSON := Utf8ToAnsi(sCode)
-    else Self.AsJSON := sCode;
+  // asUTF8 has difference in behavior in Delphi(true)/Lazarus(false).
+  if (asUTF8)
+    then Self.AsJSON := Utf8ToAnsi(sCode) // UTF-8 to ANSI
+    else Self.AsJSON := sCode;            // keep as read
 end;
 
-procedure TMcJsonItem.SaveToStream(Stream: TStream; aHuman: Boolean);
+procedure TMcJsonItem.SaveToStream(Stream: TStream; asHuman, asUTF8: Boolean);
 var
   sCode: AnsiString;
   len  : Int64;
 begin
-  sCode := AnsiToUtf8(Self.ToString(aHuman));
-  len   := Length(sCode);
+  sCode := Self.ToString(asHuman);
+  // asUTF8 has difference in behavior in Delphi(true)/Lazarus(false).
+  if (asUTF8) then 
+    sCode := AnsiToUtf8(sCode);
+  len := Length(sCode);
   Stream.Write(Pointer(sCode)^, len);
 end;
 
-procedure TMcJsonItem.LoadFromFile(const aFileName: string; aUTF8: Boolean);
+procedure TMcJsonItem.LoadFromFile(const aFileName: string; asUTF8: Boolean);
 var
   fileStream: TFileStream;
 begin
@@ -1387,20 +1734,20 @@ begin
   try
     fileStream := TFileStream.Create(aFileName, fmOpenRead or fmShareDenyWrite);
     Clear;
-    LoadFromStream(fileStream, aUTF8);
+    LoadFromStream(fileStream, asUTF8);
   finally
     fileStream.Free;
   end;
 end;
 
-procedure TMcJsonItem.SaveToFile(const aFileName: string; aHuman: Boolean);
+procedure TMcJsonItem.SaveToFile(const aFileName: string; asHuman, asUTF8: Boolean);
 var
   fileStream: TFileStream;
 begin
   fileStream := nil;
   try
     fileStream := TFileStream.Create(aFileName, fmCreate or fmShareDenyWrite);
-    SaveToStream(fileStream, aHuman);
+    SaveToStream(fileStream, asHuman, asUTF8);
   finally
     fileStream.Free;
   end;
@@ -1461,7 +1808,7 @@ end;
 
 function TMcJsonItemEnumerator.GetCurrent: TMcJsonItem;
 begin
-  if      (fItem.fChild = nil         ) then Result := nil
+  if      (not Assigned(fItem.fChild) ) then Result := nil
   else if (fIndex < 0                 ) then Result := nil
   else if (fIndex < fItem.fChild.Count) then Result := TMcJsonItem(fItem.fChild[fIndex])
   else                                  Result := nil;
@@ -1473,6 +1820,143 @@ begin
   if (fItem.fChild = nil)
     then Result := False
     else Result := (fIndex < fItem.fChild.Count);
+end;
+
+{ ---------------------------------------------------------------------------- }
+{ Auxiliary public functions }
+{ ---------------------------------------------------------------------------- }
+function GetItemTypeStr(aType: TJItemType): string;
+begin
+  Result := 'unknown';
+  case aType of
+    jitValue : Result := 'value' ;
+    jitObject: Result := 'object';
+    jitArray : Result := 'array' ;
+    jitUnset : Result := 'unset' ;
+  end;
+end;
+
+function GetValueTypeStr(aType: TJValueType): string;
+begin
+  Result := 'unknown';
+  case aType of
+    jvtString : Result := 'string' ;
+    jvtNumber : Result := 'number' ;
+    jvtBoolean: Result := 'boolean';
+    jvtNull   : Result := 'null'   ;
+  end;
+end;
+
+function McJsonEscapeString(const aStr: string; aEsc: TJEscapeType): string;
+var
+  i, len: Integer;
+  c: Char;
+begin
+  Result := '';
+  len := Length(aStr);
+  for i := 1 to len do
+  begin
+    c := aStr[I];
+    case c of
+      ID_BACKSPACE: Result := Result + CHAR_ESCAPE + CHAR_BACKSPACE;
+      ID_H_TAB    : Result := Result + CHAR_ESCAPE + CHAR_H_TAB    ;
+      ID_NEW_LINE : Result := Result + CHAR_ESCAPE + CHAR_NEW_LINE ;
+      ID_FORM_FEED: Result := Result + CHAR_ESCAPE + CHAR_FORM_FEED;
+      ID_C_RETURN : Result := Result + CHAR_ESCAPE + CHAR_C_RETURN ;
+      ID_Q_MARK   : Result := Result + CHAR_ESCAPE + CHAR_Q_MARK   ;
+      ID_R_SOLIDUS: Result := Result + CHAR_ESCAPE + CHAR_R_SOLIDUS;
+      ID_SOLIDUS  : if (aEsc >= jetStrict)
+                      then Result := Result + CHAR_ESCAPE + CHAR_SOLIDUS
+                      else Result := Result + c;
+      else
+      begin
+        if ( (aEsc >= jetUnicode) and
+             ((Integer(c) <  32)  or
+              (Integer(c) > 126)) ) then // \uXXXX
+          Result := Result + CHAR_ESCAPE + CHAR_U_HEX + IntToHex(Integer(c), 4)
+        else
+          Result := Result + c;
+      end;
+    end;
+  end;
+end;
+
+function McJsonUnEscapeString(const aStr: string): string;
+var
+  cs, cd, len: Integer;
+  ndTrim: Boolean;
+  ans: string;
+begin
+  cs  := 1; // char in source
+  cd  := 1; // char in destiny
+  ndTrim := False; // need trim
+  len := Length(aStr);
+  ans := '';
+  SetLength(ans, len);
+  while (cs <= len) do
+  begin
+    // no escape, copy and move on
+    if (aStr[cs] <> '\') then
+    begin
+      ans[cd] := aStr[cs];
+      Inc(cs);
+      Inc(cd);
+    end
+    // check bad ending escaped. Example: 'a\' -> 'a'
+    else if (cs = len) then
+    begin
+      ndTrim := True; // ignore it
+      Inc(cs);
+    end
+    // there are escapes
+    else 
+    begin
+      ndTrim := True;
+      // move next to '\'
+      Inc(cs);
+      // unescape visible escaped chars
+      if ((aStr[cs] = CHAR_Q_MARK   ) or
+          (aStr[cs] = CHAR_SOLIDUS  ) or
+          (aStr[cs] = CHAR_R_SOLIDUS)) then
+      begin
+        ans[cd] := aStr[cs];
+        Inc(cd);
+        Inc(cs);
+      end
+      // unescape u+(4 hexa) escaped chars
+      else if (aStr[cs]  = CHAR_U_HEX) and
+              (len-cs   >= 4         ) and
+              (aStr[cs+1] in HEXA) and (aStr[cs+2] in HEXA) and
+              (aStr[cs+3] in HEXA) and (aStr[cs+1] in HEXA) then
+      begin
+        try
+          ans[cd] := Chr( StrToInt('$' + Copy(aStr, cs+1, 4)) );
+          Inc(cd);
+        except
+          ; // invalid hexa, ignore and move on
+        end;
+        Inc(cs, 5); // uXXXX
+      end
+      // unescape other "invisible" escaped chars
+      else 
+      begin
+        case aStr[cs] of
+          CHAR_BACKSPACE: ans[cd] := ID_BACKSPACE;
+          CHAR_H_TAB    : ans[cd] := ID_H_TAB    ;
+          CHAR_NEW_LINE : ans[cd] := ID_NEW_LINE ;
+          CHAR_FORM_FEED: ans[cd] := ID_FORM_FEED;
+          CHAR_C_RETURN : ans[cd] := ID_C_RETURN ;
+        end;
+        Inc(cd);
+        Inc(cs);
+      end;
+    end
+  end;
+  // trim extra size
+  if (ndTrim) then
+    SetLength(ans, cd-1);
+  // return the string unescaped
+  Result := ans;
 end;
 
 end.
